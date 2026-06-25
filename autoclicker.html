@@ -1,79 +1,144 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Auto Clicker</title>
 <style>
-body{
-    font-family: Arial, sans-serif;
-    text-align:center;
-    background:#111;
-    color:white;
-    margin-top:50px;
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #111; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.wrap { display: flex; flex-direction: column; align-items: center; gap: 1.5rem; padding: 2rem 1.5rem; width: 100%; max-width: 460px; }
+.title { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #666; }
+.click-btn {
+  width: 160px; height: 160px; border-radius: 50%;
+  background: #1a1a1a; border: 1px solid #333;
+  cursor: pointer; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 6px; transition: transform 80ms ease, background 80ms ease;
+  color: #fff; font-family: Arial, sans-serif;
 }
-
-button{
-    padding:12px 24px;
-    font-size:18px;
-    margin:10px;
-    cursor:pointer;
-}
-
-#target{
-    width:200px;
-    height:100px;
-    font-size:24px;
-}
-
-#counter{
-    font-size:30px;
-    color:#00ff88;
-}
+.click-btn:hover { background: #222; }
+.click-btn.pulse { transform: scale(0.92); background: #0d2a1a; border-color: #00ff88; }
+.click-count { font-size: 38px; font-weight: 700; color: #fff; line-height: 1; }
+.click-label { font-size: 12px; color: #555; }
+.stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; width: 100%; }
+.stat { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px; text-align: center; }
+.stat-val { font-size: 20px; font-weight: 700; color: #00ff88; }
+.stat-label { font-size: 11px; color: #555; margin-top: 2px; }
+.controls { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 1rem 1.25rem; width: 100%; display: flex; flex-direction: column; gap: 1rem; }
+.cps-row { display: flex; align-items: center; gap: 12px; }
+.cps-row label { font-size: 13px; color: #888; white-space: nowrap; min-width: 120px; }
+.cps-row input[type=range] { flex: 1; accent-color: #00ff88; cursor: pointer; }
+.cps-val { font-size: 13px; font-weight: 700; min-width: 36px; text-align: right; color: #fff; }
+.btns { display: flex; gap: 8px; }
+.btn { flex: 1; padding: 9px 0; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: Arial, sans-serif; transition: background 80ms, transform 80ms; border: 1px solid #333; background: #222; color: #ccc; }
+.btn:hover { background: #2a2a2a; }
+.btn:active { transform: scale(0.97); }
+.btn.start { background: #0d2a1a; color: #00ff88; border-color: #00ff88; }
+.btn.start:hover { background: #00ff88; color: #000; }
+.btn.stop { background: #2a0d0d; color: #ff4444; border-color: #ff4444; }
+.btn.stop:hover { background: #ff4444; color: #fff; }
+.status { font-size: 12px; color: #555; display: flex; align-items: center; gap: 6px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: #333; transition: background 200ms; flex-shrink: 0; }
+.dot.active { background: #00ff88; }
 </style>
 </head>
 <body>
+<div class="wrap">
+  <span class="title">Auto Clicker</span>
 
-<h1>Auto Clicker</h1>
+  <button class="click-btn" id="clickBtn" onclick="manualClick()">
+    <span class="click-count" id="clickCount">0</span>
+    <span class="click-label">clicks</span>
+  </button>
 
-<button id="target">Click Me</button>
+  <div class="stats">
+    <div class="stat"><div class="stat-val" id="cpsDisplay">0</div><div class="stat-label">per second</div></div>
+    <div class="stat"><div class="stat-val" id="sessionTime">0s</div><div class="stat-label">session</div></div>
+    <div class="stat"><div class="stat-val" id="totalAuto">0</div><div class="stat-label">auto clicks</div></div>
+  </div>
 
-<h2>Clicks: <span id="counter">0</span></h2>
+  <div class="controls">
+    <div class="cps-row">
+      <label>Clicks per second</label>
+      <input type="range" id="cpsSlider" min="1" max="100" step="1" value="10" oninput="updateCPS()">
+      <span class="cps-val" id="cpsVal">10</span>
+    </div>
+    <div class="btns">
+      <button class="btn start" onclick="startAuto()">Start</button>
+      <button class="btn stop" onclick="stopAuto()">Stop</button>
+      <button class="btn" onclick="resetAll()">Reset</button>
+    </div>
+  </div>
 
-<p>
-Clicks Per Second:
-<input type="number" id="cps" value="10" min="1" max="1000">
-</p>
-
-<button id="start">Start Auto Clicker</button>
-<button id="stop">Stop Auto Clicker</button>
+  <div class="status"><span class="dot" id="dot"></span><span id="statusText">Idle</span></div>
+</div>
 
 <script>
-let clicks = 0;
-let autoClicker = null;
+let clicks = 0, autoClicks = 0, interval = null, sessionStart = null, sessionTimer = null, cps = 10;
+const countEl = document.getElementById('clickCount');
+const autoEl = document.getElementById('totalAuto');
+const cpsDisplay = document.getElementById('cpsDisplay');
+const sessionEl = document.getElementById('sessionTime');
+const dot = document.getElementById('dot');
+const statusEl = document.getElementById('statusText');
+const btn = document.getElementById('clickBtn');
 
-const target = document.getElementById("target");
-const counter = document.getElementById("counter");
+function updateDisplay() {
+  countEl.textContent = clicks;
+  autoEl.textContent = autoClicks;
+}
 
-target.addEventListener("click", () => {
-    clicks++;
-    counter.textContent = clicks;
-});
+function manualClick() {
+  clicks++;
+  updateDisplay();
+  btn.classList.add('pulse');
+  setTimeout(() => btn.classList.remove('pulse'), 80);
+}
 
-document.getElementById("start").addEventListener("click", () => {
-    const cps = parseInt(document.getElementById("cps").value);
+function updateCPS() {
+  cps = parseInt(document.getElementById('cpsSlider').value);
+  document.getElementById('cpsVal').textContent = cps;
+  if (interval) { stopAuto(); startAuto(); }
+}
 
-    if(autoClicker) clearInterval(autoClicker);
+function startAuto() {
+  if (interval) clearInterval(interval);
+  sessionStart = sessionStart || Date.now();
+  if (!sessionTimer) {
+    sessionTimer = setInterval(() => {
+      sessionEl.textContent = Math.round((Date.now() - sessionStart) / 1000) + 's';
+    }, 500);
+  }
+  interval = setInterval(() => {
+    clicks++; autoClicks++;
+    cpsDisplay.textContent = cps;
+    updateDisplay();
+    btn.classList.add('pulse');
+    setTimeout(() => btn.classList.remove('pulse'), Math.min(60, 500 / cps));
+  }, 1000 / cps);
+  dot.classList.add('active');
+  statusEl.textContent = 'Running at ' + cps + ' CPS';
+}
 
-    autoClicker = setInterval(() => {
-        target.click();
-    }, 1000 / cps);
-});
+function stopAuto() {
+  clearInterval(interval);
+  interval = null;
+  cpsDisplay.textContent = 0;
+  dot.classList.remove('active');
+  statusEl.textContent = 'Paused';
+}
 
-document.getElementById("stop").addEventListener("click", () => {
-    clearInterval(autoClicker);
-    autoClicker = null;
-});
+function resetAll() {
+  stopAuto();
+  clearInterval(sessionTimer);
+  sessionTimer = null;
+  sessionStart = null;
+  clicks = 0; autoClicks = 0;
+  sessionEl.textContent = '0s';
+  cpsDisplay.textContent = 0;
+  statusEl.textContent = 'Idle';
+  updateDisplay();
+}
 </script>
-
 </body>
 </html>
